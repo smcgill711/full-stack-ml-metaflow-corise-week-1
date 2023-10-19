@@ -43,6 +43,7 @@ class BaselineNLPFlow(FlowSpec):
         import pandas as pd
         import io
         from sklearn.model_selection import train_test_split
+        import numpy as np
 
         # load dataset packaged with the flow.
         # this technique is convenient when working with small datasets that need to move to remove tasks.
@@ -62,6 +63,7 @@ class BaselineNLPFlow(FlowSpec):
         del df
         del _has_review_df
 
+
         # split the data 80/20, or by using the flow's split-sz CLI argument
         _df = pd.DataFrame({"review": reviews, "label": labels})
         self.traindf, self.valdf = train_test_split(_df, test_size=self.split_size)
@@ -73,25 +75,16 @@ class BaselineNLPFlow(FlowSpec):
     @step
     def baseline(self):
         "Compute the baseline"
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import auc, accuracy_score
-        from sklearn.preprocessing import OneHotEncoder
+        from sklearn.metrics import roc_auc_score, accuracy_score
 
         ### TODO: Fit and score a baseline model on the data, log the acc and rocauc as artifacts.
         self.base_acc = 0.0
         self.base_rocauc = 0.0
 
-        # Define Target (use ratings for simplicity)
-        TARGET_VARIABLE = 'ratings'
-        
-        # Define Explantory Variables (for simplicity ignore text data and categorical data)
-        EXPL_VARS = ['age', 'positive_feedback_count', 'recommended_ind']
-        # Note recommended_ind is expected be highly correlated with the labeling
-
-        log_model = LogisticRegression().fit(self.traindf[EXPL_VARS], self.traindf[TARGET_VARIABLE])
-        self.valdf['prob'] = log_model.predict_proba(self.vald[EXPL_VARS])
-        self.base_acc = accuracy_score(self.valdf[TARGET_VARIABLE], self.valdf['prob'])
-        self.base_rocauc = auc(self.valdf[TARGET_VARIABLE], self.valdf['prob'])
+        self.valdf['pred_target'] = 1
+        print('Calculating Baseline Model Metrics')
+        self.base_acc = accuracy_score(self.valdf['label'], self.valdf['pred_target'])
+        self.base_rocauc = roc_auc_score(self.valdf['label'], self.valdf['pred_target'])
         
         self.next(self.end)
 
@@ -109,12 +102,16 @@ class BaselineNLPFlow(FlowSpec):
 
         current.card.append(Markdown("## Examples of False Positives"))
         # TODO: compute the false positive predictions where the baseline is 1 and the valdf label is 0.
+        self.false_pos_df = self.valdf[(self.valdf['pred_target'] == 1) & (self.valdf['label'] == 0)]
         # TODO: display the false_positives dataframe using metaflow.cards
+        current.card.append(Table.from_dataframe(self.false_pos_df))
         # Documentation: https://docs.metaflow.org/api/cards#table
 
         current.card.append(Markdown("## Examples of False Negatives"))
-        # TODO: compute the false positive predictions where the baseline is 0 and the valdf label is 1.
+        # TODO: compute the false negatives predictions where the baseline is 0 and the valdf label is 1.
+        self.false_neg_df = self.valdf[(self.valdf['pred_target'] == 0) & (self.valdf['label'] == 1)]
         # TODO: display the false_negatives dataframe using metaflow.cards
+        current.card.append(Table.from_dataframe(self.false_neg_df))
 
 
 if __name__ == "__main__":
